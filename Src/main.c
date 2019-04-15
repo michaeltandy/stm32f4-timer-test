@@ -51,7 +51,6 @@
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
-TIM_HandleTypeDef htim9;
 
 UART_HandleTypeDef huart3;
 
@@ -64,7 +63,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM9_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_GFXSIMULATOR_Init(void);
@@ -79,6 +77,15 @@ static void MX_GFXSIMULATOR_Init(void);
 int _write(int iFileHandle, char *pcBuffer, int iLength)
 {
     HAL_UART_Transmit(&huart3, pcBuffer, iLength, 0xFFFF);
+}
+
+volatile uint32_t timer_high = 0;
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim == &htim3) {
+    timer_high++;
+  }
 }
 
 /* USER CODE END 0 */
@@ -113,7 +120,6 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
-  MX_TIM9_Init();
   MX_USART3_UART_Init();
   MX_TIM4_Init();
   MX_GFXSIMULATOR_Init();
@@ -123,8 +129,8 @@ int main(void)
   DBGMCU->APB2FZ |= (DBGMCU_APB2_FZ_DBG_TIM1_STOP | DBGMCU_APB2_FZ_DBG_TIM9_STOP);
 
   HAL_TIM_Base_Start(&htim1);
-  HAL_TIM_Base_Start(&htim3);
-  HAL_TIM_Base_Start(&htim9);
+  HAL_TIM_Base_Start_IT(&htim3);
+  //HAL_TIM_Base_Start(&htim9);
   HAL_TIM_Base_Start(&htim4);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
 
@@ -144,9 +150,9 @@ int main(void)
     uint32_t high2;
     uint32_t low;
     do {
-        high1 = LL_TIM_GetCounter(htim9.Instance);
+        high1 = timer_high;
         low = LL_TIM_GetCounter(htim3.Instance);
-        high2 = LL_TIM_GetCounter(htim9.Instance);
+        high2 = timer_high;
     } while (high1 != high2);
     uint32_t timeMicros = (high1 << 16) | low;
 
@@ -256,7 +262,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 90;
+  htim1.Init.Period = 179;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -315,7 +321,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_ENABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
@@ -373,45 +379,6 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 2 */
   HAL_TIM_MspPostInit(&htim4);
-
-}
-
-/**
-  * @brief TIM9 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM9_Init(void)
-{
-
-  /* USER CODE BEGIN TIM9_Init 0 */
-
-  /* USER CODE END TIM9_Init 0 */
-
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-
-  /* USER CODE BEGIN TIM9_Init 1 */
-
-  /* USER CODE END TIM9_Init 1 */
-  htim9.Instance = TIM9;
-  htim9.Init.Prescaler = 0;
-  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 65535;
-  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
-  sSlaveConfig.InputTrigger = TIM_TS_ITR1;
-  if (HAL_TIM_SlaveConfigSynchro(&htim9, &sSlaveConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM9_Init 2 */
-
-  /* USER CODE END TIM9_Init 2 */
 
 }
 
