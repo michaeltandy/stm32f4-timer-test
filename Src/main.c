@@ -64,8 +64,8 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
-static void MX_TIM4_Init(void);
 static void MX_GFXSIMULATOR_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -77,14 +77,23 @@ static void MX_GFXSIMULATOR_Init(void);
 int _write(int iFileHandle, char *pcBuffer, int iLength)
 {
     HAL_UART_Transmit(&huart3, pcBuffer, iLength, 0xFFFF);
+    return 0;
 }
 
-volatile uint32_t timer_high = 0;
+volatile uint64_t timer_high = 0;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim3) {
     timer_high++;
+    htim1.Instance->ARR = 179;
+  }
+}
+
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim == &htim3) {
+    htim1.Instance->ARR = 178;
   }
 }
 
@@ -121,8 +130,8 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_USART3_UART_Init();
-  MX_TIM4_Init();
   MX_GFXSIMULATOR_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
   DBGMCU->APB1FZ |= (DBGMCU_APB1_FZ_DBG_TIM3_STOP);
@@ -130,11 +139,12 @@ int main(void)
 
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
   //HAL_TIM_Base_Start(&htim9);
   HAL_TIM_Base_Start(&htim4);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
 
-  uint32_t nextToggleMicros = 500000;
+  uint64_t nextToggleMicros = 500000;
   bool expectOverflow = false;
 
   /* USER CODE END 2 */
@@ -146,15 +156,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    uint32_t high1;
-    uint32_t high2;
+    uint64_t high1;
+    uint64_t high2;
     uint32_t low;
     do {
         high1 = timer_high;
         low = LL_TIM_GetCounter(htim3.Instance);
         high2 = timer_high;
     } while (high1 != high2);
-    uint32_t timeMicros = (high1 << 16) | low;
+    uint64_t timeMicros = (high1 << 14) | low;
 
     if (expectOverflow && timeMicros < nextToggleMicros)
         expectOverflow = false;
@@ -301,6 +311,7 @@ static void MX_TIM3_Init(void)
 
   TIM_SlaveConfigTypeDef sSlaveConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
@@ -308,10 +319,14 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 16383;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -327,9 +342,18 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_ACTIVE;
+  sConfigOC.Pulse = 16383;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -427,10 +451,10 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin, GPIO_PIN_RESET);
