@@ -2,8 +2,10 @@
 import gzip
 import re
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import numpy as np
 np.set_printoptions(precision=3, suppress=True)
+from datetime import timedelta, datetime
 
 filename='sigrok-long-tim1-tim8.vcd.gz'
 
@@ -47,4 +49,18 @@ edgeDeltas = fileToEdgeDeltas(filename);
 #timestamp = np.array(map(lambda x : x[0], edgeDeltas))
 delta = np.array(edgeDeltas)
 
-plt.plot(delta[:,0],delta[:,1]); plt.show()
+pfit, stats = np.polynomial.Polynomial.fit(delta[:,0],delta[:,1], 1, full=True)
+print(pfit,stats)
+
+prettyTimes = [datetime.fromtimestamp(i/1000000000) for i in delta[:,0]]
+
+#plt.plot(delta[:,0], delta[:,1] );
+#plt.plot(delta[:,0], pfit(delta[:,0]) );
+
+#plt.plot(delta[:,0], delta[:,1]-pfit(delta[:,0]) );
+
+
+fig, ax = plt.subplots()
+ax.plot_date(prettyTimes, delta[:,1]-pfit(delta[:,0]), '-' );
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+plt.show()
