@@ -85,8 +85,11 @@ volatile uint64_t timer_high = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim8) {
-    timer_high++;
+    timer_high += 10000;
     htim1.Instance->ARR = 179;
+    if (timer_high % 500000 == 0) {
+        HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
+    }
   }
 }
 
@@ -144,6 +147,8 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
 
+  HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
+
   uint64_t nextToggleMicros = 0;
   bool nextToggleValue = true;
   bool expectOverflow = false;
@@ -165,19 +170,20 @@ int main(void)
         low = LL_TIM_GetCounter(htim8.Instance);
         high2 = timer_high;
     } while (high1 != high2);
-    uint64_t timeMicros = (high1 << 14) | low;
+    uint64_t timeMicros = high1+low;
 
     if (expectOverflow && timeMicros < nextToggleMicros)
         expectOverflow = false;
 
     if (!expectOverflow && (timeMicros >= nextToggleMicros)) {
+        //HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
+        //HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
+        HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
+
         printf("Tick! %"PRIu32"\r\n", (uint32_t)timeMicros);
         nextToggleMicros += 500000;
         if (nextToggleMicros < timeMicros)
             expectOverflow = true;
-        //HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
-        //HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
-        HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
     }
   }
   /* USER CODE END 3 */
@@ -370,7 +376,7 @@ static void MX_TIM8_Init(void)
   htim8.Instance = TIM8;
   htim8.Init.Prescaler = 0;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 16383;
+  htim8.Init.Period = 9999;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
