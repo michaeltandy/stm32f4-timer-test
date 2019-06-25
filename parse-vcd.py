@@ -5,6 +5,7 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
+import math
 #np.set_printoptions(precision=3, suppress=True)
 from datetime import timedelta, datetime, timezone
 from scipy import optimize
@@ -21,7 +22,7 @@ def fileToEdgeDeltas(filename):
     #                                Output 7                Output 7
     lastChannelA = None
     lastChannelB = None
-    pattern = re.compile("^#(\d+) ([01])([\"#])$")
+    pattern = re.compile("^#(\d+) ([01])([\"#!])$")
     result = []
 
     with gzip.open(filename,'rt') as f:
@@ -68,4 +69,7 @@ print("i.e. skew rate of", p[0]*1000000000, "parts per billion")
 fig, ax = plt.subplots()
 ax.plot_date(prettyTimes, delta[:,1]-linear_model(delta[:,0], *p), '-' );
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+
+maxTime = datetime.fromtimestamp(15*60*math.ceil(delta[-1,0]/(15*60*1000000000)), tz=timezone.utc)
+ax.set_xlim([datetime.fromtimestamp(0, tz=timezone.utc), maxTime])
 plt.show()
