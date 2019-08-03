@@ -87,9 +87,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim8) {
     timer_high += 10000;
     htim1.Instance->ARR = 179;
-    if (timer_high % 500000 == 0) {
-        HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
-    }
+    //if (timer_high % 500000 == 0) {
+    //    HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
+    //}
   }
 }
 
@@ -98,6 +98,11 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim8) {
     htim1.Instance->ARR = 178;
   }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    GPIO_PinState read = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0);
+    HAL_GPIO_WritePin(GPIOB, LD1_Pin, read);
 }
 
 /* USER CODE END 0 */
@@ -473,6 +478,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
@@ -490,6 +496,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PF0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD1_Pin LD3_Pin */
   GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin;
@@ -510,6 +522,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 }
 
