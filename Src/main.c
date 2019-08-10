@@ -28,6 +28,8 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <stm32f4xx_ll_tim.h>
+#include <stdlib.h>
+#include <math.h>
 
 /* USER CODE END Includes */
 
@@ -82,11 +84,30 @@ int _write(int iFileHandle, char *pcBuffer, int iLength)
 
 volatile uint64_t timer_high = 0;
 
+volatile uint8_t tenMillisecondCycle = 0;
+volatile int32_t biasBaseValue = 0;
+volatile uint8_t biasTenths = 0;
+volatile uint8_t biasHundredths = 0;
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim8) {
     timer_high += 10000;
     htim1.Instance->ARR = 179;
+    tenMillisecondCycle = (tenMillisecondCycle + 1) % 100;
+    
+    int32_t adjustment = biasBaseValue;
+    if (tenMillisecondCycle%10 < biasTenths)
+        adjustment++;
+    if (tenMillisecondCycle%10==9 && (tenMillisecondCycle/10) < biasHundredths)
+        adjustment++;
+    if (adjustment == 0) {
+        htim8.Instance->CCR1 = 0xffff;
+    } else {
+        htim8.Instance->CCR1 = 9999-abs(adjustment);
+    }
+    
+
     //if (timer_high % 500000 == 0) {
     //    HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
     //}
@@ -96,13 +117,85 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim8) {
-    htim1.Instance->ARR = 178;
+    if (biasBaseValue < 0) {
+      htim1.Instance->ARR = 178;
+    } else {
+      htim1.Instance->ARR = 180;
+    }
   }
 }
+
+uint64_t readTimeMicros() {
+    uint64_t high1;
+    uint64_t high2;
+    uint32_t low;
+    do {
+        high1 = timer_high;
+        low = LL_TIM_GetCounter(htim8.Instance);
+        high2 = timer_high;
+    } while (high1 != high2);
+    uint64_t timeMicros = high1+low;
+    return timeMicros;
+}
+
+volatile uint64_t recentPpsRisingEdgeTime = 0;
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     GPIO_PinState read = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0);
     HAL_GPIO_WritePin(GPIOB, LD1_Pin, read);
+
+    if (read == GPIO_PIN_SET) {
+        recentPpsRisingEdgeTime = readTimeMicros();
+    }
+}
+
+int32_t setBiasPpb(int32_t partsPerBillion)
+{
+  if (partsPerBillion > 500000) {
+    partsPerBillion = 500000;
+  } else if (partsPerBillion < -500000) {
+    partsPerBillion = -500000;
+  }
+
+   int32_t cyclesPerSecond = (180*partsPerBillion)/1000;
+   biasBaseValue = cyclesPerSecond/100;
+   int32_t remainder = cyclesPerSecond-(100*biasBaseValue);
+   if (remainder < 0) {
+     biasBaseValue -= 1;
+     remainder += 100;
+   }
+   biasTenths = remainder / 10;
+   biasHundredths = remainder % 10;
+   
+   return (cyclesPerSecond*1000)/180;
+}
+
+
+int64_t lastErrorMicros = INT64_MAX;
+int64_t errorIntegral = 0;
+const double proportionalGain = 35.80;
+const double integralGain = 0.300;
+const double derivativeGain = 0.511;
+
+void updateClockPID(uint64_t trueTimeMicros, uint64_t measuredTimeMicros) {
+    int64_t errorMicros = measuredTimeMicros-trueTimeMicros;
+    if (lastErrorMicros != INT64_MAX) {
+        long derivativeTerm = errorMicros-lastErrorMicros;
+        errorIntegral += errorMicros;
+        
+        double p = proportionalGain*errorMicros;
+        double i = integralGain*errorIntegral;
+        double d = derivativeGain*derivativeTerm;
+        double pid = p+i+d;
+
+        int32_t biasPpb = round(pid);
+        setBiasPpb(biasPpb);
+
+        printf("PID,%"PRId32",%f,%f,%f,%"PRId32"\r\n", 
+                (int32_t)errorMicros, p, i, d, biasPpb);
+    }
+
+    lastErrorMicros = errorMicros;
 }
 
 /* USER CODE END 0 */
@@ -145,6 +238,9 @@ int main(void)
   DBGMCU->APB1FZ |= (DBGMCU_APB1_FZ_DBG_TIM3_STOP);
   DBGMCU->APB2FZ |= (DBGMCU_APB2_FZ_DBG_TIM1_STOP | DBGMCU_APB2_FZ_DBG_TIM9_STOP | DBGMCU_APB2_FZ_DBG_TIM10_STOP);
 
+  while (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0) != GPIO_PIN_RESET) {}
+  while (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0) != GPIO_PIN_SET) {}
+
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_Base_Start_IT(&htim8);
   HAL_TIM_OC_Start_IT(&htim8, TIM_CHANNEL_1);
@@ -154,9 +250,13 @@ int main(void)
 
   HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
 
+  //setBiasPpb(-13139);
+
   uint64_t nextToggleMicros = 0;
   bool nextToggleValue = true;
   bool expectOverflow = false;
+  uint64_t prevPpsRisingEdge = 0;
+  uint32_t ppsCount = 0;
 
   /* USER CODE END 2 */
 
@@ -167,15 +267,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    uint64_t high1;
-    uint64_t high2;
-    uint32_t low;
-    do {
-        high1 = timer_high;
-        low = LL_TIM_GetCounter(htim8.Instance);
-        high2 = timer_high;
-    } while (high1 != high2);
-    uint64_t timeMicros = high1+low;
+    uint64_t timeMicros = readTimeMicros();
 
     if (expectOverflow && timeMicros < nextToggleMicros)
         expectOverflow = false;
@@ -185,11 +277,25 @@ int main(void)
         //HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
         HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
 
-        printf("Tick! %"PRIu32"\r\n", (uint32_t)timeMicros);
+        //printf("Tick! %"PRIu32"\r\n", (uint32_t)timeMicros);
         nextToggleMicros += 500000;
         if (nextToggleMicros < timeMicros)
             expectOverflow = true;
     }
+
+    uint64_t ppsRisingEdgeTime = recentPpsRisingEdgeTime;
+    if (ppsRisingEdgeTime != prevPpsRisingEdge) {
+        ppsCount++;
+
+        printf("PPS,%"PRIu32",%"PRIu32",%"PRIu32"\r\n", 
+                ppsCount,
+                (uint32_t)(ppsRisingEdgeTime/1000000), 
+                (uint32_t)(ppsRisingEdgeTime%1000000));
+        updateClockPID(ppsCount*(uint64_t)1000000, ppsRisingEdgeTime);
+
+        prevPpsRisingEdge = ppsRisingEdgeTime;
+    }
+
   }
   /* USER CODE END 3 */
 }
@@ -524,7 +630,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 3, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 }
