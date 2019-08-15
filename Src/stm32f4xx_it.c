@@ -234,6 +234,9 @@ void TIM8_UP_TIM13_IRQHandler(void)
 void TIM8_CC_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM8_CC_IRQn 0 */
+  __HAL_TIM_CLEAR_IT(&htim8, TIM_IT_CC1);
+  HAL_TIM_OC_DelayElapsedCallback(&htim8);
+  return;
 
   /* USER CODE END TIM8_CC_IRQn 0 */
   HAL_TIM_IRQHandler(&htim8);

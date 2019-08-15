@@ -198,6 +198,49 @@ void updateClockPID(uint64_t trueTimeMicros, uint64_t measuredTimeMicros) {
     lastErrorMicros = errorMicros;
 }
 
+int32_t detectMissedPpsPulse(uint64_t ppsTimeMicros, uint64_t xtalTimeMicros) {
+    int64_t offset = xtalTimeMicros-ppsTimeMicros;
+    int32_t adjustment;
+    if (offset > 500000) {
+        // ppsTime is too low - return cycles to add.
+        adjustment = (offset+500000)/1000000;
+        printf("PPS pulse(s) missed? %"PRIu32",%06"PRIu32" vs %"PRIu32",%06"PRIu32" correcting by %"PRId32"s\r\n", 
+                (uint32_t)(ppsTimeMicros/1000000), 
+                (uint32_t)(ppsTimeMicros%1000000),
+		(uint32_t)(xtalTimeMicros/1000000), 
+                (uint32_t)(xtalTimeMicros%1000000),
+                adjustment);
+    } else if (offset < -500000) {
+        // ppsTime is too high?!
+        adjustment = (offset-500000)/1000000;
+        printf("PPS pulse early? %"PRIu32",%06"PRIu32" vs %"PRIu32",%06"PRIu32", correcting by %"PRId32"s\r\n", 
+                (uint32_t)(ppsTimeMicros/1000000), 
+                (uint32_t)(ppsTimeMicros%1000000),
+		(uint32_t)(xtalTimeMicros/1000000), 
+                (uint32_t)(xtalTimeMicros%1000000),
+                adjustment);
+    } else {
+        adjustment = 0;
+    }
+    return adjustment;
+}
+
+bool measurementLooksAcceptable(uint64_t lastPpsTimeMicros, uint64_t thisPpsTimeMicros) {
+    if (lastPpsTimeMicros == 0)
+        return true;
+
+    int64_t fromPrevMicros = thisPpsTimeMicros-lastPpsTimeMicros;
+    int64_t errorIgnoringSkippedCycles = ((fromPrevMicros+500000)%1000000)-500000;
+    
+    bool acceptable = (errorIgnoringSkippedCycles >= -10000) && (errorIgnoringSkippedCycles <= 10000);
+    if (!acceptable) {
+        printf("Rejecting measurement of %"PRIu32",%06"PRIu32"\r\n", 
+                (uint32_t)(thisPpsTimeMicros/1000000), 
+                (uint32_t)(thisPpsTimeMicros%1000000));
+    }
+    return acceptable;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -256,7 +299,10 @@ int main(void)
   bool nextToggleValue = true;
   bool expectOverflow = false;
   uint64_t prevPpsRisingEdge = 0;
-  uint32_t ppsCount = 0;
+  uint64_t prevAcceptedPpsRisingEdge = 0;
+  int32_t ppsCount = 0;
+
+
 
   /* USER CODE END 2 */
 
@@ -284,15 +330,19 @@ int main(void)
     }
 
     uint64_t ppsRisingEdgeTime = recentPpsRisingEdgeTime;
+    
     if (ppsRisingEdgeTime != prevPpsRisingEdge) {
-        ppsCount++;
+        if (measurementLooksAcceptable(prevAcceptedPpsRisingEdge, ppsRisingEdgeTime)) {
+            ppsCount++;
+            ppsCount += detectMissedPpsPulse(ppsCount*(int64_t)1000000, ppsRisingEdgeTime);
 
-        printf("PPS,%"PRIu32",%"PRIu32",%"PRIu32"\r\n", 
-                ppsCount,
-                (uint32_t)(ppsRisingEdgeTime/1000000), 
-                (uint32_t)(ppsRisingEdgeTime%1000000));
-        updateClockPID(ppsCount*(uint64_t)1000000, ppsRisingEdgeTime);
-
+            printf("PPS,%"PRIu32",%"PRIu32",%"PRIu32"\r\n", 
+                    ppsCount,
+                    (uint32_t)(ppsRisingEdgeTime/1000000), 
+                    (uint32_t)(ppsRisingEdgeTime%1000000));
+            updateClockPID((ppsCount*(uint64_t)1000000)+1000, ppsRisingEdgeTime);
+            prevAcceptedPpsRisingEdge = ppsRisingEdgeTime;
+        }
         prevPpsRisingEdge = ppsRisingEdgeTime;
     }
 
