@@ -31,7 +31,7 @@ uint64_t advanceBiasedClockByMicroseconds(CrystalSim * this, uint32_t microsecon
     int64_t totalCyclesThisAdvance = stepByCycles+cyclesFromBillionths;
     
     this->timeCycles = this->timeCycles+totalCyclesThisAdvance;
-    this->biasPartsPerBillion = remainderBillionths;
+    this->remainderBillionths = remainderBillionths;
     return totalCyclesThisAdvance;
 }
 
@@ -49,8 +49,8 @@ uint64_t advanceAdjustableClockByCycles(AdjustableClock * this, uint64_t cycles)
     
     uint64_t newTimeMicroseconds = this->timeMicroseconds + microseconds;
 
-    uint8_t tenMillisecondCycle = newTimeMicroseconds / 10000;
-    uint32_t prevTenMsCycle = this->timeMicroseconds / 10000;
+    uint8_t tenMillisecondCycle = (newTimeMicroseconds / 10000) % 100;
+    uint32_t prevTenMsCycle = (this->timeMicroseconds / 10000) % 100;
 
     int32_t cyclesPerSecond = this->adjustmentCyclesPerSecond;
     int32_t biasBaseValue = cyclesPerSecond/100;
@@ -80,18 +80,56 @@ uint64_t advanceAdjustableClockByCycles(AdjustableClock * this, uint64_t cycles)
 
 int main()
 {
-    CrystalSim cs = {0};
-    cs.biasPartsPerBillion = 1000;
-    printf("Before, timeCycles %" PRId64 "\n", cs.timeCycles);
-    advanceBiasedClockByMicroseconds(&cs, 1000000000);
-    printf("After, timeCycles %" PRId64 "\n", cs.timeCycles);
+    {
+        CrystalSim cs = {0};
+        cs.biasPartsPerBillion = 1000;
+        printf("CrystalSim test 1, before timeCycles: %" PRId64 "\n", cs.timeCycles);
+        advanceBiasedClockByMicroseconds(&cs, 1000000);
+        printf("CrystalSim test 1, after, timeCycles %" PRId64 "\n", cs.timeCycles);
+    }
 
-    AdjustableClock ac = {0};
-    ac.adjustmentCyclesPerSecond = 180;
+    {
+        CrystalSim cs = {0};
+        cs.biasPartsPerBillion = 1000;
+        printf("CrystalSim test 2, before timeCycles: %" PRId64 "\n", cs.timeCycles);
+        for (uint64_t i = 0 ; i<10000L ; i++)
+        {
+            advanceBiasedClockByMicroseconds(&cs, 100);
+        }
+        printf("CrystalSim test 2, after, timeCycles %" PRId64 "\n", cs.timeCycles);
+    }
 
-    printf("Before, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
-    advanceAdjustableClockByCycles(&ac, 197820000L);
-    printf("After, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
+    {
+        CrystalSim cs = {0};
+        cs.biasPartsPerBillion = 1000;
+        printf("CrystalSim test 3, before timeCycles: %" PRId64 "\n", cs.timeCycles);
+        for (uint64_t i = 0 ; i<1000000L ; i++)
+        {
+            advanceBiasedClockByMicroseconds(&cs, 1);
+        }
+        printf("CrystalSim test 3, after, timeCycles %" PRId64 "\n", cs.timeCycles);
+    }
+
+    {
+        AdjustableClock ac = {0};
+        ac.adjustmentCyclesPerSecond = 180;
+
+        printf("AdjustableClock test 1, before, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
+        advanceAdjustableClockByCycles(&ac, 10*180000000L);
+        printf("AdjustableClock test 1, after, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
+    }
+
+    {
+        AdjustableClock ac = {0};
+        ac.adjustmentCyclesPerSecond = 180;
+
+        printf("AdjustableClock test 2, before, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
+        for (uint64_t i = 0 ; i<18000000L ; i++)
+        {
+            advanceAdjustableClockByCycles(&ac, 100);
+        }
+        printf("AdjustableClock test 2, after, timeMicroseconds %" PRId64 "\n", ac.timeMicroseconds);
+    }
     
     return 0;
 }
