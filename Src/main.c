@@ -78,7 +78,7 @@ static void MX_TIM8_Init(void);
 //int fputc(int ch, FILE *f) {
 int _write(int iFileHandle, char *pcBuffer, int iLength)
 {
-    HAL_UART_Transmit(&huart3, pcBuffer, iLength, 0xFFFF);
+    HAL_UART_Transmit(&huart3, (uint8_t *)pcBuffer, iLength, 0xFFFF);
     return 0;
 }
 
@@ -89,8 +89,13 @@ volatile int32_t biasBaseValue = 0;
 volatile uint8_t biasTenths = 0;
 volatile uint8_t biasHundredths = 0;
 
+volatile uint32_t overflowInterruptTime = 0;
+volatile uint32_t adjustInterruptTime = 0;
+volatile uint32_t extiInterruptTime = 0;
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+  uint32_t startTime = DWT->CYCCNT;
   if (htim == &htim8) {
     timer_high += 10000;
     htim1.Instance->ARR = 179;
@@ -112,10 +117,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     //    HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
     //}
   }
+  overflowInterruptTime = DWT->CYCCNT-startTime;
 }
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
+  uint32_t startTime = DWT->CYCCNT;
   if (htim == &htim8) {
     if (biasBaseValue < 0) {
       htim1.Instance->ARR = 178;
@@ -123,6 +130,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
       htim1.Instance->ARR = 180;
     }
   }
+  adjustInterruptTime = DWT->CYCCNT-startTime;
 }
 
 uint64_t readTimeMicros() {
@@ -141,12 +149,14 @@ uint64_t readTimeMicros() {
 volatile uint64_t recentPpsRisingEdgeTime = 0;
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    uint32_t startTime = DWT->CYCCNT;
     GPIO_PinState read = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0);
     HAL_GPIO_WritePin(GPIOB, LD1_Pin, read);
 
     if (read == GPIO_PIN_SET) {
         recentPpsRisingEdgeTime = readTimeMicros();
     }
+    extiInterruptTime = DWT->CYCCNT-startTime;
 }
 
 int32_t setBiasPpb(int32_t partsPerBillion)
@@ -278,6 +288,10 @@ int main(void)
   MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
   DBGMCU->APB1FZ |= (DBGMCU_APB1_FZ_DBG_TIM3_STOP);
   DBGMCU->APB2FZ |= (DBGMCU_APB2_FZ_DBG_TIM1_STOP | DBGMCU_APB2_FZ_DBG_TIM9_STOP | DBGMCU_APB2_FZ_DBG_TIM10_STOP);
 
@@ -296,7 +310,6 @@ int main(void)
   //setBiasPpb(-13139);
 
   uint64_t nextToggleMicros = 0;
-  bool nextToggleValue = true;
   bool expectOverflow = false;
   uint64_t prevPpsRisingEdge = 0;
   uint64_t prevAcceptedPpsRisingEdge = 0;
@@ -340,6 +353,10 @@ int main(void)
                     ppsCount,
                     (uint32_t)(ppsRisingEdgeTime/1000000), 
                     (uint32_t)(ppsRisingEdgeTime%1000000));
+
+            printf("Interrupt Handler Times,%"PRIu32",%"PRIu32",%"PRIu32"\r\n",
+                    overflowInterruptTime, adjustInterruptTime, extiInterruptTime);
+
             updateClockPID((ppsCount*(uint64_t)1000000)+1000, ppsRisingEdgeTime);
             prevAcceptedPpsRisingEdge = ppsRisingEdgeTime;
         }
