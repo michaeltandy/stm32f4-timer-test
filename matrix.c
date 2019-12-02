@@ -1,3 +1,4 @@
+#include "matrix.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -11,20 +12,13 @@
 
 #define REQUIRE(X) assert(X)
 
-typedef struct
-{
-    float data[2][2];
-    uint8_t height;
-    uint8_t width;
-} SimpleMatrix;
-
 static void initResult(SimpleMatrix * result, uint8_t height, uint8_t width) {
     memset(result, 0, sizeof(SimpleMatrix));
     result->height = height;
     result->width = width;
 }
 
-void add(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
+void matrixAdd(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
 {
     REQUIRE(a->height == b->height);
     REQUIRE(a->width == b->width);
@@ -37,7 +31,7 @@ void add(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
     }
 }
 
-void subtract(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
+void matrixSubtract(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
 {
     REQUIRE(a->height == b->height);
     REQUIRE(a->width == b->width);
@@ -50,7 +44,7 @@ void subtract(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix 
     }
 }
 
-void transpose(SimpleMatrix * result, const SimpleMatrix * a)
+void matrixTranspose(SimpleMatrix * result, const SimpleMatrix * a)
 {
     initResult(result, a->width, a->height);
     
@@ -61,7 +55,7 @@ void transpose(SimpleMatrix * result, const SimpleMatrix * a)
     }
 }
 
-void multiply(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
+void matrixMultiply(SimpleMatrix * result, const SimpleMatrix * a, const SimpleMatrix * b)
 {
     REQUIRE(a->width == b->height);
     initResult(result, a->height, b->width);
@@ -99,7 +93,7 @@ static void invertTwoByTwo(SimpleMatrix * result, const SimpleMatrix * mat)
     result->data[1][1] = det*a;
 }
 
-void invert(SimpleMatrix * result, const SimpleMatrix * a)
+void matrixInvert(SimpleMatrix * result, const SimpleMatrix * a)
 {
     REQUIRE(a->width == a->height);
     
@@ -112,7 +106,7 @@ void invert(SimpleMatrix * result, const SimpleMatrix * a)
     }
 }
 
-bool equal(const SimpleMatrix * a, const SimpleMatrix * b)
+bool matrixEqual(const SimpleMatrix * a, const SimpleMatrix * b)
 {
     if(a->height != b->height || a->width != b->width)
         return false;
@@ -126,20 +120,38 @@ bool equal(const SimpleMatrix * a, const SimpleMatrix * b)
     return true;
 }
 
-void print(const SimpleMatrix * a)
-{   
-    printf("[");
+void matrixCopy(SimpleMatrix * result, const SimpleMatrix * a)
+{
+    initResult(result, a->height, a->width);
+
     for (int i=0 ; i < a->height ; i++) {
-        printf("[");
         for (int j=0 ; j < a->width ; j++) {
-            printf("%f, ", a->data[i][j]);
+            result->data[i][j] = a->data[i][j];
         }
-        printf("\b\b ],\n");
     }
-    printf("]\n");
 }
 
-int main()
+
+void matrixPrint(const SimpleMatrix * a)
+{
+    char buffer[255];
+    int writeIdx = 0;
+    writeIdx += snprintf(&buffer[writeIdx], sizeof(buffer)-writeIdx, "[\n");
+
+    for (int i=0 ; i < a->height ; i++) {
+        writeIdx += snprintf(&buffer[writeIdx], sizeof(buffer)-writeIdx, " [ ");
+        for (int j=0 ; j < a->width ; j++) {
+            writeIdx += snprintf(&buffer[writeIdx], sizeof(buffer)-writeIdx, "%f,\t", a->data[i][j]);
+        }
+        writeIdx -= 2;
+        writeIdx += snprintf(&buffer[writeIdx], sizeof(buffer)-writeIdx, " ],\n");
+    }
+    writeIdx -= 2;
+    writeIdx += snprintf(&buffer[writeIdx], sizeof(buffer)-writeIdx, "\n]\n");
+    printf("%s",buffer);
+}
+
+int test()
 {
     SimpleMatrix SQUARE_1234 = {{{1,2},{3,4}}, 2, 2};
     SimpleMatrix SQUARE_7654 = {{{7,6},{5,4}}, 2, 2};
@@ -147,42 +159,50 @@ int main()
     {
         SimpleMatrix expected = {{{2,4},{6,8}}, 2, 2};
         SimpleMatrix result = {0};
-        add(&result, &SQUARE_1234, &SQUARE_1234);
-        print(&result);
-        REQUIRE(equal(&result, &expected));
+        matrixAdd(&result, &SQUARE_1234, &SQUARE_1234);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &expected));
     }
 
     {
         SimpleMatrix expected = {{{6,4},{2,0}}, 2, 2};
         SimpleMatrix result = {0};
-        subtract(&result, &SQUARE_7654, &SQUARE_1234);
-        print(&result);
-        REQUIRE(equal(&result, &expected));
+        matrixSubtract(&result, &SQUARE_7654, &SQUARE_1234);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &expected));
     }
 
     {
         SimpleMatrix expected = {{{1,3},{2,4}}, 2, 2};
         SimpleMatrix result = {0};
-        transpose(&result, &SQUARE_1234);
-        print(&result);
-        REQUIRE(equal(&result, &expected));
+        matrixTranspose(&result, &SQUARE_1234);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &expected));
     }
     
     {
         SimpleMatrix expected = {{{17, 14}, {41, 34}}, 2, 2};
         SimpleMatrix result = {0};
-        multiply(&result, &SQUARE_1234, &SQUARE_7654);
-        print(&result);
-        REQUIRE(equal(&result, &expected));
+        matrixMultiply(&result, &SQUARE_1234, &SQUARE_7654);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &expected));
     }
 
     {
         SimpleMatrix expected = {{{-2, 1}, {3.0/2, -1.0/2}}, 2, 2};
         SimpleMatrix result = {0};
-        invert(&result, &SQUARE_1234);
-        print(&result);
-        REQUIRE(equal(&result, &expected));
+        matrixInvert(&result, &SQUARE_1234);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &expected));
     }
+
+    {
+        SimpleMatrix result = {0};
+        matrixCopy(&result, &SQUARE_1234);
+        matrixPrint(&result);
+        REQUIRE(matrixEqual(&result, &SQUARE_1234));
+    }
+
     return 0;
 }
 
