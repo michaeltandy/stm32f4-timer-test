@@ -5,11 +5,11 @@ int main()
     SimpleMatrix x = {{{0},{0}}, 2, 1}; // Initial state (time error and rate of error increase)
     SimpleMatrix P = {{{10000000,0},{0,10000000}}, 2, 2}; // Initial uncertainty
     SimpleMatrix u = {{{0},{0}}, 2, 1}; // Control input
-    SimpleMatrix F = {{{1,1},{0,1}}, 2, 2}; // Next state function (assumes 1 second time step)
-    SimpleMatrix H = {{{1,0}}, 1, 2}; // Measurement function
-    SimpleMatrix R = {{{50000}}, 1, 1}; // Measurement uncertainty
-    SimpleMatrix I = {{{1,0},{0,1}}, 2, 2}; // Identity matrix
-    SimpleMatrix Q = {{{1,0.007},{0.007,0.000044}}, 2, 2}; // Process noise covariance
+   const SimpleMatrix F = {{{1,1},{0,1}}, 2, 2}; // Next state function (assumes 1 second time step)
+   const SimpleMatrix H = {{{1,0}}, 1, 2}; // Measurement function
+   const SimpleMatrix R = {{{50000}}, 1, 1}; // Measurement uncertainty
+   const SimpleMatrix I = {{{1,0},{0,1}}, 2, 2}; // Identity matrix
+   const SimpleMatrix Q = {{{1,0.007},{0.007,0.000044}}, 2, 2}; // Process noise covariance
 
   for (int i=0 ; i<100 ; i++) {
     if (i>0) {
